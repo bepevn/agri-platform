@@ -1,0 +1,4 @@
+id,name,email,password,role
+1,홍길동,farmer@test.com,1234,farmer
+2,김도매,wholesaler@test.com,1234,wholesaler
+3,이토지,land@test.com,1234,land_agent
