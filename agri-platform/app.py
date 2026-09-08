@@ -68,7 +68,8 @@ def add_farm(
     region,
     area,
     crop_type,
-    description
+    description,
+    price
 ):
 
     farms = load_farms()
@@ -84,6 +85,7 @@ def add_farm(
         "farm_name": farm_name,
         "region": region,
         "area": area,
+        "price": price,
         "crop_type": crop_type,
         "description": description
     }])
@@ -171,20 +173,26 @@ def farmer_dashboard():
 
     farms = load_farms()
 
-    # 현재 로그인한 농장주의 농지만 가져오기
+    # 현재 로그인한 농장주의 농지
     my_farms = farms[
         farms["owner_id"].astype(str)
         == str(user["id"])
     ]
 
-    # --------------------------------------
-    # 통계
-    # --------------------------------------
+    # ======================================
+    # 내 농지 통계
+    # ======================================
 
     total_farms = len(my_farms)
 
     total_area = (
         my_farms["area"].sum()
+        if len(my_farms) > 0
+        else 0
+    )
+
+    crop_count = (
+        my_farms["crop_type"].nunique()
         if len(my_farms) > 0
         else 0
     )
@@ -203,9 +211,7 @@ def farmer_dashboard():
 
     c3.metric(
         "재배 작물",
-        my_farms["crop_type"].nunique()
-        if len(my_farms) > 0
-        else 0
+        f"{crop_count}종"
     )
 
     st.divider()
@@ -229,15 +235,22 @@ def farmer_dashboard():
                 "farm_name",
                 "region",
                 "area",
+                "price",
                 "crop_type",
                 "description"
             ]
         ].copy()
 
+        display_farms["price"] = (
+            display_farms["price"]
+            .apply(lambda x: f"{int(x):,}원")
+        )
+
         display_farms.columns = [
             "농장 이름",
             "지역",
             "면적(평)",
+            "가격",
             "재배 작물",
             "설명"
         ]
@@ -247,6 +260,206 @@ def farmer_dashboard():
             use_container_width=True,
             hide_index=True
         )
+
+    st.divider()
+
+    # ======================================
+    # 농지 검색
+    # ======================================
+
+    st.subheader("🔎 농지 검색")
+
+    st.write(
+        "다른 농장주가 등록한 농지를 지역, 면적, 가격으로 검색할 수 있습니다."
+    )
+
+    # 본인 농지를 제외한 판매 농지
+    available_farms = farms[
+        farms["owner_id"].astype(str)
+        != str(user["id"])
+    ].copy()
+
+    # --------------------------------------
+    # 검색 조건
+    # --------------------------------------
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        regions = ["전체"] + sorted(
+            available_farms["region"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        selected_region = st.selectbox(
+            "📍 지역",
+            regions
+        )
+
+    with col2:
+
+        crop_types = ["전체"] + sorted(
+            available_farms["crop_type"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        selected_crop = st.selectbox(
+            "🌱 작물",
+            crop_types
+        )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        min_area = st.number_input(
+            "최소 면적 (평)",
+            min_value=0,
+            value=0,
+            step=100
+        )
+
+    with col2:
+
+        max_area = st.number_input(
+            "최대 면적 (평)",
+            min_value=0,
+            value=100000,
+            step=100
+        )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        min_price = st.number_input(
+            "최소 가격 (원)",
+            min_value=0,
+            value=0,
+            step=1000000
+        )
+
+    with col2:
+
+        max_price = st.number_input(
+            "최대 가격 (원)",
+            min_value=0,
+            value=10000000000,
+            step=1000000
+        )
+
+    # ======================================
+    # 검색 실행
+    # ======================================
+
+    if st.button(
+        "🔎 농지 검색하기",
+        use_container_width=True
+    ):
+
+        result = available_farms.copy()
+
+        # 지역
+        if selected_region != "전체":
+
+            result = result[
+                result["region"] == selected_region
+            ]
+
+        # 작물
+        if selected_crop != "전체":
+
+            result = result[
+                result["crop_type"] == selected_crop
+            ]
+
+        # 면적
+        result = result[
+            (result["area"] >= min_area) &
+            (result["area"] <= max_area)
+        ]
+
+        # 가격
+        result = result[
+            (result["price"] >= min_price) &
+            (result["price"] <= max_price)
+        ]
+
+        st.session_state.farm_search_result = result
+
+    # ======================================
+    # 검색 결과
+    # ======================================
+
+    if "farm_search_result" in st.session_state:
+
+        result = st.session_state.farm_search_result
+
+        st.divider()
+
+        st.subheader(
+            f"🏞️ 검색 결과 {len(result)}건"
+        )
+
+        if len(result) == 0:
+
+            st.warning(
+                "검색 조건에 맞는 농지가 없습니다."
+            )
+
+        else:
+
+            for _, farm in result.iterrows():
+
+                with st.container(border=True):
+
+                    col1, col2 = st.columns([3, 1])
+
+                    with col1:
+
+                        st.subheader(
+                            f"🌱 {farm['farm_name']}"
+                        )
+
+                        st.write(
+                            f"📍 지역: **{farm['region']}**"
+                        )
+
+                        st.write(
+                            f"📐 면적: **{int(farm['area']):,}평**"
+                        )
+
+                        st.write(
+                            f"💰 가격: **{int(farm['price']):,}원**"
+                        )
+
+                        st.write(
+                            f"🌾 주요 작물: **{farm['crop_type']}**"
+                        )
+
+                        if farm["description"]:
+
+                            st.write(
+                                f"📝 {farm['description']}"
+                            )
+
+                    with col2:
+
+                        if st.button(
+                            "구매 문의",
+                            key=f"farm_contact_{farm['id']}"
+                        ):
+
+                            st.success(
+                                "구매 문의가 전달되었습니다."
+                            )
+
+    st.divider()
 
     # ======================================
     # 농지 등록
@@ -270,6 +483,12 @@ def farmer_dashboard():
             "농지 면적 (평)",
             min_value=1,
             step=100
+        )
+
+        price = st.number_input(
+            "판매 가격 (원)",
+            min_value=0,
+            step=1000000
         )
 
         crop_type = st.selectbox(
@@ -299,11 +518,13 @@ def farmer_dashboard():
         if submitted:
 
             if not farm_name:
+
                 st.error(
                     "농장 이름을 입력해주세요."
                 )
 
             elif not region:
+
                 st.error(
                     "지역을 입력해주세요."
                 )
@@ -316,7 +537,8 @@ def farmer_dashboard():
                     region=region,
                     area=area,
                     crop_type=crop_type,
-                    description=description
+                    description=description,
+                    price=price
                 )
 
                 st.success(
