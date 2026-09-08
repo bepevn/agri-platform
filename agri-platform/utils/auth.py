@@ -2,7 +2,10 @@ import pandas as pd
 from pathlib import Path
 
 
+# 프로젝트의 기준 폴더
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# users.csv 위치
 USERS_FILE = BASE_DIR / "data" / "users.csv"
 
 
@@ -14,7 +17,7 @@ def login(email, password):
     users = load_users()
 
     user = users[
-        (users["email"] == email) &
+        (users["email"].astype(str) == str(email)) &
         (users["password"].astype(str) == str(password))
     ]
 
